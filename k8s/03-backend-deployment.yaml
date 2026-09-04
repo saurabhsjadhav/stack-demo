@@ -19,8 +19,8 @@ spec:
           ports:
             - containerPort: 3000
           env:
-           # - name: DB_HOST 
-            - name: POSTGRES_DB 
+            - name: DB_HOST 
+           # - name: POSTGRES_DB 
               value: postgres
             - name: DB_PORT
               value: "5432"
