@@ -1,0 +1,46 @@
+name: build-and-deploy
+
+on:
+  push:
+    branches: [ main ]
+
+jobs:
+  build-and-deploy:
+    runs-on: ubuntu-latest   # standard GitHub-hosted runner, nothing self-hosted
+
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Build Docker image
+        run: docker build -t backend:${{ github.sha }} ./app
+
+      - name: Create local Kubernetes cluster (KinD)
+        uses: helm/kind-action@v1
+
+      - name: Load image into the cluster
+        run: kind load docker-image backend:${{ github.sha }} --name chart-testing
+
+      - name: Point manifest at this build's image
+        run: |
+          sed -i "s|image: backend:latest|image: backend:${{ github.sha }}|" k8s/03-backend-deployment.yaml
+
+      - name: Apply Kubernetes manifests
+        run: |
+          kubectl apply -f k8s/00-secret.yaml
+          kubectl apply -f k8s/01-postgres-deployment.yaml
+          kubectl apply -f k8s/02-postgres-service.yaml
+          kubectl apply -f k8s/03-backend-deployment.yaml
+          kubectl apply -f k8s/04-backend-service.yaml
+
+      - name: Wait for rollout
+        run: |
+          kubectl rollout status deployment/postgres --timeout=120s
+          kubectl rollout status deployment/backend --timeout=120s
+
+      - name: Smoke test the deployed app
+        run: |
+          kubectl port-forward svc/backend 3000:3000 &
+          sleep 5
+          curl -f http://localhost:3000/healthz
+          curl -f http://localhost:3000/items
